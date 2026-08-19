@@ -9,3 +9,44 @@ body,
 body {
   min-height: 100vh;
 }
+
+.resize-handle {
+  width: 7px;
+  flex-shrink: 0;
+  cursor: col-resize;
+  background: #ecece6;
+  position: relative;
+  z-index: 2;
+  user-select: none;
+  touch-action: none;
+}
+
+.resize-handle:hover,
+.resize-handle.dragging {
+  background: #85B7EB;
+}
+
+.resize-handle::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 2px;
+  width: 3px;
+  height: 28px;
+  margin-top: -14px;
+  border-radius: 2px;
+  background: #c8c8be;
+}
+
+.resize-handle:hover::after,
+.resize-handle.dragging::after {
+  background: #378ADD;
+}
+
+.legend-card {
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid #e2e2da;
+  border-radius: 8px;
+  padding: 10px 12px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+}

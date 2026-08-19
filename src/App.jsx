@@ -185,9 +185,13 @@ export default function App() {
   const [sq, setSq] = useState("");
   const [searching, setSearching] = useState(false);
   const [srRes, setSrRes] = useState([]);
+  const [leftW, setLeftW] = useState(240);
+  const [rightW, setRightW] = useState(380);
+  const [resizing, setResizing] = useState(null);
   const svgRef = useRef(null);
   const drag = useRef({ down: false, btn: 0, lx: 0, ly: 0 });
   const dragMoved = useRef(false);
+  const resizeRef = useRef(null);
 
   const FOV = 600;
   const CX = 290, CY = 210;
@@ -245,6 +249,36 @@ export default function App() {
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
   }, [onWheel]);
+
+  useEffect(() => {
+    const onMove = (e) => {
+      const job = resizeRef.current;
+      if (!job) return;
+      const dx = e.clientX - job.startX;
+      if (job.side === "left") {
+        setLeftW(Math.min(460, Math.max(180, job.startW + dx)));
+      } else {
+        setRightW(Math.min(620, Math.max(260, job.startW - dx)));
+      }
+    };
+    const onUp = () => {
+      resizeRef.current = null;
+      setResizing(null);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+  }, []);
+
+  const startResize = (side, startW) => (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    resizeRef.current = { side, startX: e.clientX, startW };
+    setResizing(side);
+  };
 
   /* thread lines */
   const threadPaths = THREADS.map(th => {
@@ -337,14 +371,14 @@ export default function App() {
   const myT = selNode ? THREADS.filter(th => th.nodes.includes(selNode.id)) : [];
 
   const pill = (label, active, col, onClick) => (
-    <button onClick={onClick} style={{ fontSize: 9, padding: "2px 7px", borderRadius: 8, cursor: "pointer", fontFamily: "inherit",
+    <button onClick={onClick} style={{ fontSize: 13, padding: "4px 10px", borderRadius: 8, cursor: "pointer", fontFamily: "inherit",
       border: `1px solid ${active ? col : C.border}`, background: active ? col + "20" : "#f5f5f2", color: active ? col : C.t2 }}>
       {label}
     </button>
   );
 
   const tabBtn = (id, label) => (
-    <button onClick={() => setTab(id)} style={{ fontSize: 10, padding: "3px 9px", background: "transparent", border: "none",
+    <button onClick={() => setTab(id)} style={{ fontSize: 14, padding: "5px 12px", background: "transparent", border: "none",
       borderBottom: tab === id ? `2px solid ${C.t1}` : "2px solid transparent",
       color: tab === id ? C.t1 : C.t3, cursor: "pointer", fontFamily: "inherit" }}>
       {label}
@@ -352,11 +386,11 @@ export default function App() {
   );
 
   return (
-    <div style={{ display: "flex", height: "100vh", background: C.bg, color: C.t1, fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif", overflow: "hidden" }}>
+    <div style={{ display: "flex", height: "100vh", background: C.bg, color: C.t1, fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif", overflow: "hidden", userSelect: resizing ? "none" : "auto", cursor: resizing ? "col-resize" : "default" }}>
 
       {/* LEFT LANE — vertical workflow-step navigator (Ross Spiral sidebar) */}
-      <div style={{ width: 152, flexShrink: 0, background: C.panel, borderRight: `1px solid ${C.border}`, overflowY: "auto", display: "flex", flexDirection: "column" }}>
-        <div style={{ padding: "10px 8px 6px", fontSize: 8, fontWeight: 700, color: C.t3, letterSpacing: "0.08em" }}>WORKFLOW STEPS</div>
+      <div style={{ width: leftW, flexShrink: 0, background: C.panel, overflowY: "auto", display: "flex", flexDirection: "column" }}>
+        <div style={{ padding: "10px 8px 6px", fontSize: 13, fontWeight: 700, color: C.t3, letterSpacing: "0.08em" }}>WORKFLOW STEPS</div>
         {PHASES.map((ph, i) => {
           const phNodes = NODES.filter(n => n.ph === i);
           const isOpen = laneOpen[i];
@@ -365,11 +399,11 @@ export default function App() {
               <div onClick={() => setLaneOpen(o => ({ ...o, [i]: !o[i] }))}
                 style={{ display: "flex", alignItems: "center", gap: 5, padding: "7px 8px 4px", cursor: "pointer", userSelect: "none", background: isOpen ? ph.hex + "12" : "transparent" }}>
                 <div style={{ width: 7, height: 7, borderRadius: "50%", background: ph.hex, flexShrink: 0 }} />
-                <span style={{ fontSize: 9, fontWeight: 700, color: ph.hex, flex: 1 }}>{ph.label}</span>
-                <span style={{ fontSize: 9, color: C.t3, marginRight: 2 }}>{phNodes.length}</span>
-                <span style={{ fontSize: 9, color: C.t3 }}>{isOpen ? "▾" : "▸"}</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: ph.hex, flex: 1 }}>{ph.label}</span>
+                <span style={{ fontSize: 13, color: C.t3, marginRight: 2 }}>{phNodes.length}</span>
+                <span style={{ fontSize: 13, color: C.t3 }}>{isOpen ? "▾" : "▸"}</span>
               </div>
-              <div style={{ fontSize: 8, color: C.t3, padding: "0 8px 5px 20px" }}>{ph.desc}</div>
+              <div style={{ fontSize: 12, color: C.t3, padding: "0 8px 5px 20px" }}>{ph.desc}</div>
               {isOpen && phNodes.map(nd => {
                 const isSel = selNode?.id === nd.id;
                 const dim = isDim(nd);
@@ -379,7 +413,7 @@ export default function App() {
                       background: isSel ? DCOL[nd.dom] + "18" : "transparent",
                       borderLeft: isSel ? `2px solid ${DCOL[nd.dom]}` : "2px solid transparent" }}>
                     <div style={{ width: 5, height: 5, borderRadius: "50%", background: DCOL[nd.dom], flexShrink: 0 }} />
-                    <span style={{ fontSize: 9, color: isSel ? C.t1 : C.t2, flex: 1, lineHeight: 1.3 }}>{nd.label}</span>
+                    <span style={{ fontSize: 13, color: isSel ? C.t1 : C.t2, flex: 1, lineHeight: 1.3 }}>{nd.label}</span>
                     {nd.loop && <div style={{ width: 4, height: 4, borderRadius: "50%", background: "#D85A30", flexShrink: 0 }} />}
                     {(nd.up.length > 0 || nd.re.length > 0) && <div style={{ width: 4, height: 4, borderRadius: "50%", background: "#378ADD", flexShrink: 0 }} />}
                   </div>
@@ -389,6 +423,11 @@ export default function App() {
           );
         })}
       </div>
+      <div
+        className={`resize-handle${resizing === "left" ? " dragging" : ""}`}
+        onPointerDown={startResize("left", leftW)}
+        title="Drag to resize"
+      />
 
       {/* CENTER — 3D orbit spiral (pure SVG, no Three.js dependency) */}
       <div ref={svgRef} style={{ flex: 1, position: "relative", overflow: "hidden", cursor: drag.current.down ? "grabbing" : "grab", userSelect: "none" }}
@@ -440,7 +479,7 @@ export default function App() {
                 {hasDb && !dim && <circle cx={sx + r - 1} cy={sy - r + 1} r={1.8} fill="#378ADD" opacity={0.9} />}
                 {nd.loop && !dim && <circle cx={sx - r + 1} cy={sy - r + 1} r={1.8} fill="#D85A30" opacity={0.9} />}
                 {nd.dom === "xlink" && !dim && <rect x={sx - 3} y={sy - 3} width={6} height={6} rx={1} fill={col} opacity={0.5} />}
-                {isSel && <text x={sx + r + 3} y={sy + 4} fontSize={8} fontWeight={600} fill={col} style={{ pointerEvents: "none" }}>{nd.label}</text>}
+                {isSel && <text x={sx + r + 5} y={sy + 5} fontSize={13} fontWeight={600} fill={col} style={{ pointerEvents: "none" }}>{nd.label}</text>}
               </g>
             );
           })}
@@ -459,41 +498,46 @@ export default function App() {
             ["⟲", () => { setZoom(1); setTheta(0.3); setPhi(0.4); setPanXY({ x: 0, y: 0 }); }],
             ["－", () => setZoom(z => Math.max(0.3, z / 1.25))]
           ].map(([l, fn]) => (
-            <button key={l} onClick={fn} style={{ width: 28, height: 28, border: `1px solid ${C.border}`, borderRadius: 6, background: C.panel, color: C.t2, cursor: "pointer", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center" }}>{l}</button>
+            <button key={l} onClick={fn} style={{ width: 32, height: 32, border: `1px solid ${C.border}`, borderRadius: 6, background: C.panel, color: C.t2, cursor: "pointer", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>{l}</button>
           ))}
-          <div style={{ fontSize: 9, color: C.t3, textAlign: "center" }}>{Math.round(zoom * 100)}%</div>
+          <div style={{ fontSize: 13, color: C.t3, textAlign: "center" }}>{Math.round(zoom * 100)}%</div>
         </div>
 
-        <div style={{ position: "absolute", top: 8, left: 8, fontSize: 9, color: C.t3, lineHeight: 1.8, pointerEvents: "none" }}>
+        <div style={{ position: "absolute", top: 8, left: 8, fontSize: 13, color: C.t3, lineHeight: 1.8, pointerEvents: "none" }}>
           Drag · orbit &nbsp;|&nbsp; Scroll · zoom &nbsp;|&nbsp; Shift-drag · pan &nbsp;|&nbsp; Right-click · menu off
         </div>
 
         {/* Phase / attrition legend */}
-        <div style={{ position: "absolute", top: 8, right: 8, display: "flex", flexDirection: "column", gap: 3 }}>
+        <div className="legend-card" style={{ position: "absolute", top: 8, right: 8, display: "flex", flexDirection: "column", gap: 6 }}>
           {PHASES.map((ph, i) => (
             <div key={i} onClick={() => setActivePhase(activePhase === i ? null : i)}
-              style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 8, cursor: "pointer", opacity: activePhase !== null && activePhase !== i ? 0.3 : 1 }}>
-              <div style={{ width: 22, height: 2, background: ph.hex, borderRadius: 1, opacity: 0.6 }} />
+              style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer", opacity: activePhase !== null && activePhase !== i ? 0.3 : 1 }}>
+              <div style={{ width: 28, height: 3, background: ph.hex, borderRadius: 1, opacity: 0.7 }} />
               <span style={{ color: ph.hex, fontWeight: 600 }}>{ph.label}</span>
               <span style={{ color: C.t3 }}>r={(SP_RADII[i])} ← {i === 0 ? "widest" : i === 4 ? "narrowest" : ""}</span>
             </div>
           ))}
-          <div style={{ marginTop: 4, fontSize: 8, color: C.t3, borderTop: `1px solid ${C.border}`, paddingTop: 4 }}>
+          <div style={{ marginTop: 2, fontSize: 13, color: C.t3, borderTop: `1px solid ${C.border}`, paddingTop: 6 }}>
             Width = candidate count (attrition)
           </div>
         </div>
       </div>
+      <div
+        className={`resize-handle${resizing === "right" ? " dragging" : ""}`}
+        onPointerDown={startResize("right", rightW)}
+        title="Drag to resize"
+      />
 
       {/* RIGHT PANEL */}
-      <div style={{ width: 280, flexShrink: 0, background: C.panel, borderLeft: `1px solid ${C.border}`, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+      <div style={{ width: rightW, flexShrink: 0, background: C.panel, display: "flex", flexDirection: "column", overflow: "hidden" }}>
 
         {/* Search */}
         <div style={{ padding: "10px 12px", borderBottom: `1px solid ${C.border}` }}>
           <div style={{ display: "flex", gap: 5 }}>
             <input value={sq} onChange={e => setSq(e.target.value)} onKeyDown={e => e.key === "Enter" && doSearch()}
               placeholder="Search UniProt, Reactome…"
-              style={{ flex: 1, fontSize: 11, padding: "5px 8px", borderRadius: 6, border: `1px solid ${C.border}`, background: "#f9f9f7", color: C.t1, outline: "none" }} />
-            <button onClick={doSearch} style={{ fontSize: 10, padding: "0 10px", borderRadius: 6, border: `1px solid ${C.border}`, background: "#f2f2ee", color: C.t2, cursor: "pointer", fontFamily: "inherit" }}>
+              style={{ flex: 1, fontSize: 15, padding: "7px 10px", borderRadius: 6, border: `1px solid ${C.border}`, background: "#f9f9f7", color: C.t1, outline: "none" }} />
+            <button onClick={doSearch} style={{ fontSize: 14, padding: "0 12px", borderRadius: 6, border: `1px solid ${C.border}`, background: "#f2f2ee", color: C.t2, cursor: "pointer", fontFamily: "inherit" }}>
               {searching ? "…" : "Go"}
             </button>
           </div>
@@ -503,10 +547,10 @@ export default function App() {
                 <a key={i} href={r.url} target="_blank" rel="noreferrer"
                   style={{ display: "block", padding: "5px 7px", borderRadius: 5, background: "#f7f7f4", border: `1px solid ${C.border}`, textDecoration: "none" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 2 }}>
-                    <span style={{ fontSize: 8, padding: "1px 5px", borderRadius: 5, background: r.col, color: "#fff", fontWeight: 700 }}>{r.src}</span>
-                    <span style={{ fontSize: 10, color: "#1a6bc4", fontWeight: 500 }}>{r.name}</span>
+                    <span style={{ fontSize: 12, padding: "2px 6px", borderRadius: 5, background: r.col, color: "#fff", fontWeight: 700 }}>{r.src}</span>
+                    <span style={{ fontSize: 14, color: "#1a6bc4", fontWeight: 500 }}>{r.name}</span>
                   </div>
-                  {r.note && <div style={{ fontSize: 9, color: C.t3, lineHeight: 1.4 }}>{r.note}</div>}
+                  {r.note && <div style={{ fontSize: 13, color: C.t3, lineHeight: 1.4 }}>{r.note}</div>}
                 </a>
               ))}
             </div>
@@ -515,15 +559,15 @@ export default function App() {
 
         {/* Filters: Phases, Threads, Registration Access */}
         <div style={{ padding: "7px 12px", borderBottom: `1px solid ${C.border}` }}>
-          <div style={{ fontSize: 8, color: C.t3, marginBottom: 3, fontWeight: 700, letterSpacing: "0.07em" }}>PHASES</div>
+          <div style={{ fontSize: 12, color: C.t3, marginBottom: 5, fontWeight: 700, letterSpacing: "0.07em" }}>PHASES</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 3, marginBottom: 7 }}>
             {PHASES.map((p, i) => pill(p.label, activePhase === i, p.hex, () => setActivePhase(activePhase === i ? null : i)))}
           </div>
-          <div style={{ fontSize: 8, color: C.t3, marginBottom: 3, fontWeight: 700, letterSpacing: "0.07em" }}>THREADS</div>
+          <div style={{ fontSize: 12, color: C.t3, marginBottom: 5, fontWeight: 700, letterSpacing: "0.07em" }}>THREADS</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 3, marginBottom: 7 }}>
             {THREADS.map(th => pill(th.label, activeThread === th.id, th.hex, () => setActiveThread(activeThread === th.id ? null : th.id)))}
           </div>
-          <div style={{ fontSize: 8, color: C.t3, marginBottom: 3, fontWeight: 700, letterSpacing: "0.07em" }}>REGISTRATION ACCESS</div>
+          <div style={{ fontSize: 12, color: C.t3, marginBottom: 5, fontWeight: 700, letterSpacing: "0.07em" }}>REGISTRATION ACCESS</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
             {[
               { label: "Luma sequence registry", url: "https://dotmatics.com/products/luma", col: "#7F77DD" },
@@ -537,7 +581,7 @@ export default function App() {
                 style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 7px", borderRadius: 5,
                   background: r.col + "10", border: `1px solid ${r.col}40`, textDecoration: "none" }}>
                 <div style={{ width: 6, height: 6, borderRadius: "50%", background: r.col, flexShrink: 0 }} />
-                <span style={{ fontSize: 9, color: r.col, fontWeight: 500 }}>{r.label} ↗</span>
+                <span style={{ fontSize: 13, color: r.col, fontWeight: 500 }}>{r.label} ↗</span>
               </a>
             ))}
           </div>
@@ -546,8 +590,8 @@ export default function App() {
         {/* Node detail */}
         <div style={{ flex: 1, overflowY: "auto", padding: 12 }}>
           {!selNode ? (
-            <div style={{ fontSize: 11, color: C.t2, lineHeight: 1.85, marginTop: 8 }}>
-              <div style={{ fontSize: 13, fontWeight: 500, color: C.t1, marginBottom: 8 }}>3D Attrition Spiral</div>
+            <div style={{ fontSize: 15, color: C.t2, lineHeight: 1.85, marginTop: 8 }}>
+              <div style={{ fontSize: 18, fontWeight: 500, color: C.t1, marginBottom: 8 }}>3D Attrition Spiral</div>
               <strong style={{ fontWeight: 500 }}>Part 1 is outermost</strong> (widest radius = most candidates). Each inner coil represents attrition — fewer molecules survive each phase.<br /><br />
               <div style={{ background: "#5B8DB818", border: "1px solid #5B8DB860", borderRadius: 6, padding: "7px 9px", marginBottom: 8 }}>
                 <strong style={{ fontWeight: 500, color: "#5B8DB8" }}>Cross-linking nodes</strong> (square markers, blue) run alongside the main workflow. They cover XL-MS methodology, epitope mapping, PTM characterization, disulfide mapping, glycan profiling, and ADC conjugation site analysis at both descriptive and atomic levels.
@@ -558,13 +602,13 @@ export default function App() {
           ) : (
             <>
               <div style={{ marginBottom: 10 }}>
-                <div style={{ fontSize: 14, fontWeight: 500, color: C.t1 }}>{selNode.label}</div>
-                <div style={{ fontSize: 10, color: C.t2, marginBottom: 5 }}>{selNode.sub}</div>
-                <span style={{ fontSize: 9, padding: "2px 8px", borderRadius: 8, background: ph.hex + "18", color: ph.hex }}>
+                <div style={{ fontSize: 18, fontWeight: 500, color: C.t1 }}>{selNode.label}</div>
+                <div style={{ fontSize: 14, color: C.t2, marginBottom: 5 }}>{selNode.sub}</div>
+                <span style={{ fontSize: 13, padding: "3px 10px", borderRadius: 8, background: ph.hex + "18", color: ph.hex }}>
                   {ph.label} · {ph.desc}
                 </span>
                 {selNode.dom === "xlink" && (
-                  <span style={{ fontSize: 9, padding: "2px 8px", borderRadius: 8, background: "#5B8DB820", color: "#5B8DB8", marginLeft: 5 }}>
+                  <span style={{ fontSize: 13, padding: "3px 10px", borderRadius: 8, background: "#5B8DB820", color: "#5B8DB8", marginLeft: 5 }}>
                     Cross-linking / PTM
                   </span>
                 )}
@@ -573,10 +617,10 @@ export default function App() {
                 {tabBtn("detail", "Detail")}{tabBtn("assay", "Assay")}{tabBtn("databases", "Databases")}{tabBtn("tools", "Tools")}
               </div>
 
-              {tab === "detail" && <div style={{ fontSize: 11, lineHeight: 1.75, color: C.t1 }}>{selNode.detail}</div>}
+              {tab === "detail" && <div style={{ fontSize: 15, lineHeight: 1.75, color: C.t1 }}>{selNode.detail}</div>}
 
               {tab === "assay" && (
-                <div style={{ fontSize: 11 }}>
+                <div style={{ fontSize: 15 }}>
                   <div style={{ color: C.t3, marginBottom: 3 }}>Primary assay</div>
                   <div style={{ fontWeight: 500, color: C.t1, marginBottom: 10 }}>{selNode.assay}</div>
                   {selNode.gate && <div style={{ background: "#fff2ee", border: "1px solid #f5c5b0", borderRadius: 5, padding: "5px 8px", color: "#b84a20" }}>Gate: {selNode.gate}</div>}
@@ -586,20 +630,20 @@ export default function App() {
 
               {tab === "databases" && (
                 <div>
-                  {dbLoad && <div style={{ fontSize: 11, color: C.t2 }}>Fetching records…</div>}
-                  {!dbLoad && !selNode.up.length && !selNode.re.length && <div style={{ fontSize: 11, color: C.t2 }}>No database IDs linked to this step.</div>}
+                  {dbLoad && <div style={{ fontSize: 15, color: C.t2 }}>Fetching records…</div>}
+                  {!dbLoad && !selNode.up.length && !selNode.re.length && <div style={{ fontSize: 15, color: C.t2 }}>No database IDs linked to this step.</div>}
                   {dbRecs.map((rec, i) => (
                     <div key={i} style={{ marginBottom: 8, padding: "7px 9px", borderRadius: 6, border: `1px solid ${C.border}`, background: "#f9f9f7" }}>
                       <div style={{ marginBottom: 3 }}>
-                        <span style={{ fontSize: 8, padding: "1px 5px", borderRadius: 6, background: rec.type === "uniprot" ? "#1D9E75" : "#7F77DD", color: "#fff", fontWeight: 700, marginRight: 5 }}>
+                        <span style={{ fontSize: 12, padding: "2px 6px", borderRadius: 6, background: rec.type === "uniprot" ? "#1D9E75" : "#7F77DD", color: "#fff", fontWeight: 700, marginRight: 5 }}>
                           {rec.type === "uniprot" ? "UniProt" : "Reactome"}
                         </span>
-                        <a href={rec.url} target="_blank" rel="noreferrer" style={{ fontSize: 10, color: "#1a6bc4", textDecoration: "none", fontWeight: 500 }}>{rec.name}</a>
+                        <a href={rec.url} target="_blank" rel="noreferrer" style={{ fontSize: 14, color: "#1a6bc4", textDecoration: "none", fontWeight: 500 }}>{rec.name}</a>
                       </div>
-                      {rec.org && <div style={{ fontSize: 9, color: C.t2 }}>{rec.org}{rec.gene ? " · " + rec.gene : ""}</div>}
-                      {rec.fn && <div style={{ fontSize: 9, color: C.t2, marginTop: 3, lineHeight: 1.5 }}>{rec.fn}</div>}
-                      {rec.summ && <div style={{ fontSize: 9, color: C.t2, marginTop: 3, lineHeight: 1.5 }}>{rec.summ}</div>}
-                      {rec.pbUrl && <a href={rec.pbUrl} target="_blank" rel="noreferrer" style={{ fontSize: 9, color: "#1a6bc4", marginTop: 4, display: "block" }}>Open Pathway Browser →</a>}
+                      {rec.org && <div style={{ fontSize: 13, color: C.t2 }}>{rec.org}{rec.gene ? " · " + rec.gene : ""}</div>}
+                      {rec.fn && <div style={{ fontSize: 13, color: C.t2, marginTop: 3, lineHeight: 1.5 }}>{rec.fn}</div>}
+                      {rec.summ && <div style={{ fontSize: 13, color: C.t2, marginTop: 3, lineHeight: 1.5 }}>{rec.summ}</div>}
+                      {rec.pbUrl && <a href={rec.pbUrl} target="_blank" rel="noreferrer" style={{ fontSize: 13, color: "#1a6bc4", marginTop: 4, display: "block" }}>Open Pathway Browser →</a>}
                     </div>
                   ))}
                 </div>
@@ -607,19 +651,19 @@ export default function App() {
 
               {tab === "tools" && (
                 <div>
-                  <div style={{ fontSize: 8, color: C.t3, marginBottom: 5, fontWeight: 700, letterSpacing: "0.07em" }}>CONNECTED TOOLS</div>
+                  <div style={{ fontSize: 12, color: C.t3, marginBottom: 5, fontWeight: 700, letterSpacing: "0.07em" }}>CONNECTED TOOLS</div>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 12 }}>
                     {selNode.tools.map(t => (
-                      <span key={t} style={{ fontSize: 10, padding: "3px 8px", borderRadius: 6, background: "#f2f2ee", border: `1px solid ${C.border}`, color: C.t1 }}>{t}</span>
+                      <span key={t} style={{ fontSize: 14, padding: "4px 10px", borderRadius: 6, background: "#f2f2ee", border: `1px solid ${C.border}`, color: C.t1 }}>{t}</span>
                     ))}
                   </div>
                   {myT.length > 0 && (
                     <>
-                      <div style={{ fontSize: 8, color: C.t3, marginBottom: 5, fontWeight: 700, letterSpacing: "0.07em" }}>BELONGS TO THREADS</div>
+                      <div style={{ fontSize: 12, color: C.t3, marginBottom: 5, fontWeight: 700, letterSpacing: "0.07em" }}>BELONGS TO THREADS</div>
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
                         {myT.map(th => (
                           <button key={th.id} onClick={() => setActiveThread(activeThread === th.id ? null : th.id)}
-                            style={{ fontSize: 9, padding: "2px 8px", borderRadius: 8, cursor: "pointer", fontFamily: "inherit",
+                            style={{ fontSize: 13, padding: "3px 10px", borderRadius: 8, cursor: "pointer", fontFamily: "inherit",
                               border: `1px solid ${th.hex}`, background: activeThread === th.id ? th.hex + "18" : "transparent", color: th.hex }}>
                             {th.label}
                           </button>
