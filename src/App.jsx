@@ -8,11 +8,11 @@ const C = {
 
 /* ── phases: Part 1 = outermost (widest radius) → attrition inward ── */
 const PHASES = [
-  { label: "Part 1", desc: "mAb Discovery",       hex: "#1D9E75" },
-  { label: "Part 2", desc: "Format Design",       hex: "#7F77DD" },
-  { label: "Part 3", desc: "Expression & Char.",  hex: "#378ADD" },
-  { label: "Part 4", desc: "Protein Engineering", hex: "#BA7517" },
-  { label: "Part 5", desc: "VHH / BoltzGen",      hex: "#993556" },
+  { label: "Part 1", desc: "mAb Discovery",       hex: "#1D9E75", tip: "Part 1 — mAb Discovery. Outermost coil (widest radius): the largest candidate pool before attrition." },
+  { label: "Part 2", desc: "Format Design",       hex: "#7F77DD", tip: "Part 2 — Format Design. NGS, VDJ annotation, and in silico format fitness; the coil narrows as formats are dropped." },
+  { label: "Part 3", desc: "Expression & Char.",  hex: "#378ADD", tip: "Part 3 — Expression & Characterization. Expression, purification, and biophysical QC; failed expressors and aggregates drop out." },
+  { label: "Part 4", desc: "Protein Engineering", hex: "#BA7517", tip: "Part 4 — Protein Engineering. Affinity, humanization, Fc and developability edits start a new inner attrition cycle." },
+  { label: "Part 5", desc: "VHH / BoltzGen",      hex: "#993556", tip: "Part 5 — VHH / BoltzGen. Innermost coil (narrowest radius): AI-designed VHHs and humanized variants." },
 ];
 
 const DCOL = {
@@ -22,12 +22,71 @@ const DCOL = {
 };
 
 const THREADS = [
-  { id: "seq",   label: "Sequence",         hex: "#E24B4A", nodes: ["n5","n10","n11","n12","n15","n16","n28","n31","n32","n36","n38"] },
-  { id: "cross", label: "Cross-reactivity", hex: "#1D9E75", nodes: ["n7","n8","n14","n21"] },
-  { id: "dev",   label: "Developability",   hex: "#378ADD", nodes: ["n8","n9","n14","n19","n20","n25","n30"] },
-  { id: "human", label: "Humanization",     hex: "#993556", nodes: ["n24","n33","n34","n35","n36","n38"] },
-  { id: "luma",  label: "Luma",             hex: "#7F77DD", nodes: ["n1","n2","n6","n10","n12","n15","n17","n22","n28","n30","n37","n38"] },
-  { id: "xlink", label: "Cross-linking",    hex: "#5B8DB8", nodes: ["x1","x2","x3","x4","x5","x6","x7","x8","x9"] },
+  { id: "seq",   label: "Sequence",         hex: "#E24B4A", nodes: ["n5","n10","n11","n12","n15","n16","n28","n31","n32","n36","n38"], tip: "Sequence thread: cloning, annotation, registration, and variant generation." },
+  { id: "cross", label: "Cross-reactivity", hex: "#1D9E75", nodes: ["n7","n8","n14","n21"], tip: "Cross-reactivity thread: ortholog binding and kinetics that support in vivo translation." },
+  { id: "dev",   label: "Developability",   hex: "#378ADD", nodes: ["n8","n9","n14","n19","n20","n25","n30"], tip: "Developability thread: stability, aggregation, PTMs, and other CMC-risk gates." },
+  { id: "human", label: "Humanization",     hex: "#993556", nodes: ["n24","n33","n34","n35","n36","n38"], tip: "Humanization thread: FR grafting, back-mutations, and VHH FR2 humanization." },
+  { id: "luma",  label: "Luma",             hex: "#7F77DD", nodes: ["n1","n2","n6","n10","n12","n15","n17","n22","n28","n30","n37","n38"], tip: "Luma thread: steps that write to or read from the sequence registry." },
+  { id: "xlink", label: "Cross-linking",    hex: "#5B8DB8", nodes: ["x1","x2","x3","x4","x5","x6","x7","x8","x9"], tip: "Cross-linking / PTM thread: XL-MS, glycans, disulfides, and conjugation sites." },
+];
+
+const DOM_TIP = {
+  molbio: "Molecular biology step",
+  protein: "Protein design or purification step",
+  bioinf: "Bioinformatics / sequence analysis step",
+  assay: "Assay or characterization step",
+  decision: "Decision gate — candidates advance or drop",
+  engineer: "Protein or VHH engineering step",
+  xlink: "Cross-linking / PTM node (square marker on the spiral)",
+};
+
+const XL_LAYERS = [
+  { num: 1, name: "Sequences", desc: "VH, VL chain sequences", color: "#2E7D32", always: true, tip: "Layer 1 is always on. Sequence identity is the base uniqueness key." },
+  { num: 2, name: "Disulfide crosslinks", desc: "Optional — default off for IgGs", color: "#F9C200", textColor: "#333", tip: "Canonical IgG disulfides are shared. Leave off so they do not split uniqueness." },
+  { num: 3, name: "Other sequence crosslinks", desc: "Non-disulfide XL · ring-forming", color: "#7F77DD", tip: "Non-disulfide sequence crosslinks contribute to uniqueness when enabled." },
+  { num: 4, name: "Chemical components", desc: "PTMs, glycosylation, modifications", color: "#1D9E75", tip: "PTMs and glycans distinguish molecules that share sequence." },
+  { num: 5, name: "XL to chemical components", desc: "ADC, Lys coupling, bicyclic XL", color: "#D85A30", tip: "Linker and conjugation chemistry. Unknown attachment sites are only partial uniqueness." },
+];
+
+const PTM_SITES = [
+  { mod: "Disulfide", site: "Cys23–Cys96", layer: "L2", status: "Confirmed", tip: "Canonical VH intra-chain disulfide. Confirmed by mapping; uniqueness off by default." },
+  { mod: "N-glycosylation", site: "Asn297 / Asn317", layer: "L4", status: "Confirmed", tip: "Fc N-glycan required for FcγR engagement. Glycoform affects ADCC and clearance." },
+  { mod: "Oxidation", site: "Met255 / Met431", layer: "L4", status: "Flagged", tip: "Methionine oxidation can reduce Protein A binding and is a developability flag." },
+  { mod: "Deamidation", site: "CDR NG / NS", layer: "L4", status: "Predicted", tip: "Asn deamidation in CDRs can shift charge and affinity — scan before nomination." },
+  { mod: "Lys ADC coupling", site: "Lys unspecified", layer: "L5", status: "Unknown site", tip: "Stochastic Lys conjugation: DAR mixture until the attachment site is resolved." },
+];
+
+const THRESH_PRESETS = {
+  screening: {
+    kdG: 100, kdY: 500, blockG: 50, blockY: 30, macG: 10, macY: 20,
+    hlG: 10, hlY: 5, secG: 80, secY: 70, aggG: 20, aggY: 40, titerG: 0.05, titerY: 0.01,
+  },
+  lead: {
+    kdG: 2, kdY: 10, blockG: 80, blockY: 65, macG: 2, macY: 4,
+    hlG: 30, hlY: 10, secG: 90, secY: 80, aggG: 10, aggY: 20, titerG: 0.7, titerY: 0.3,
+  },
+  candidate: {
+    kdG: 1, kdY: 5, blockG: 85, blockY: 75, macG: 1.5, macY: 3,
+    hlG: 40, hlY: 20, secG: 95, secY: 90, aggG: 5, aggY: 10, titerG: 1.0, titerY: 0.5,
+  },
+};
+
+const THRESH_METRICS = [
+  { key: "kd", label: "hTfR1 KD", unit: "nM", gOp: "≤", yOp: "≤", rOp: ">", gTip: "Green: preferred affinity for this stage." },
+  { key: "block", label: "% Blockade", unit: "%", gOp: "≥", yOp: "≥", rOp: "<", gTip: "Green: functional blockade of transferrin uptake." },
+  { key: "mac", label: "Mac/Hu KD ratio", unit: "×", gOp: "≤", yOp: "≤", rOp: ">", gTip: "Green: macaque vs human affinity close enough for in vivo models." },
+  { key: "hl", label: "t½", unit: "min", gOp: "≥", yOp: "≥", rOp: "<", gTip: "Green: receptor engagement half-life in the preferred range." },
+  { key: "sec", label: "SEC % purity", unit: "%", gOp: "≥", yOp: "≥", rOp: "<", gTip: "Green: monomer purity at or above the stage target." },
+  { key: "agg", label: "% Aggregation", unit: "%", gOp: "<", yOp: "<", rOp: "≥", gTip: "Green: aggregation below the stage cutoff." },
+  { key: "titer", label: "Titer", unit: "g/L", gOp: "≥", yOp: "≥", rOp: "<", gTip: "Green: expression titer sufficient to advance." },
+];
+
+const REG_LINKS = [
+  { label: "Luma sequence registry", url: "https://dotmatics.com/products/luma", col: "#7F77DD", tip: "Open Luma to register sequences and uniqueness keys for this program." },
+  { label: "UniProt entry", url: "https://www.uniprot.org/uniprot/P02786", col: "#1D9E75", tip: "Human transferrin receptor (P02786) — the primary antigen record." },
+  { label: "GenBank nucleotide", url: "https://www.ncbi.nlm.nih.gov/nuccore/", col: "#378ADD", tip: "Search GenBank for nucleotide records linked to cloned VH/VL genes." },
+  { label: "Reactome browser", url: "https://reactome.org/PathwayBrowser/", col: "#BA7517", tip: "Open Reactome to inspect TfR trafficking and related pathways." },
+  { label: "PDB structure search", url: "https://www.rcsb.org/", col: "#5B8DB8", tip: "Search RCSB PDB for TfR and antibody complex structures used in docking." },
 ];
 
 /* Part 1 = largest radius (index 0 → outermost), Part 5 = smallest */
@@ -170,6 +229,31 @@ function project(pt, theta, phi, fov, cx, cy) {
   return { sx: cx + x1 * scale, sy: cy + y1 * scale, depth: z2 };
 }
 
+function BandRow({ metric, thresh, setThresh, tp }) {
+  const gKey = metric.key + "G";
+  const yKey = metric.key + "Y";
+  return (
+    <div className="tconf-row" {...tp(metric.gTip)}>
+      <div className="tconf-metric">{metric.label}</div>
+      <div className="tconf-unit">{metric.unit}</div>
+      <div className="tconf-band">
+        <label className="g" {...tp("Green band — pass / preferred")}>G</label>
+        {metric.gOp}
+        <input type="number" step="any" value={thresh[gKey]}
+          onChange={e => setThresh(t => ({ ...t, [gKey]: parseFloat(e.target.value) }))}
+          {...tp(`Green cutoff (${metric.gOp})`)} />
+        <label className="a" {...tp("Yellow band — watch / marginal")}>Y</label>
+        {metric.yOp}
+        <input type="number" step="any" value={thresh[yKey]}
+          onChange={e => setThresh(t => ({ ...t, [yKey]: parseFloat(e.target.value) }))}
+          {...tp(`Yellow cutoff (${metric.yOp})`)} />
+        <label className="r" {...tp("Red band — fail / do not advance")}>R</label>
+        {metric.rOp}{thresh[yKey]}
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [selNode, setSelNode] = useState(null);
   const [activeThread, setActiveThread] = useState(null);
@@ -186,8 +270,12 @@ export default function App() {
   const [searching, setSearching] = useState(false);
   const [srRes, setSrRes] = useState([]);
   const [leftW, setLeftW] = useState(240);
-  const [rightW, setRightW] = useState(380);
+  const [rightW, setRightW] = useState(420);
   const [resizing, setResizing] = useState(null);
+  const [tip, setTip] = useState(null);
+  const [layers, setLayers] = useState({ 2: false, 3: true, 4: true, 5: true });
+  const [stage, setStage] = useState("lead");
+  const [thresh, setThresh] = useState({ ...THRESH_PRESETS.lead });
   const svgRef = useRef(null);
   const drag = useRef({ down: false, btn: 0, lx: 0, ly: 0 });
   const dragMoved = useRef(false);
@@ -280,6 +368,23 @@ export default function App() {
     setResizing(side);
   };
 
+  const tp = (text) => !text ? {} : {
+    onMouseEnter: (e) => setTip({ text, x: e.clientX + 12, y: e.clientY + 18 }),
+    onMouseMove: (e) => setTip(cur => ({ text: cur?.text || text, x: e.clientX + 12, y: e.clientY + 18 })),
+    onMouseLeave: () => setTip(null),
+  };
+
+  const applyStage = (id) => {
+    setStage(id);
+    setThresh({ ...THRESH_PRESETS[id] });
+  };
+
+  const toggleLayer = (num) => setLayers(prev => ({ ...prev, [num]: !prev[num] }));
+  const jumpToUniqueness = () => {
+    const nd = NODES.find(n => n.id === "x5");
+    if (nd) { setSelNode(nd); setTab("detail"); }
+  };
+
   /* thread lines */
   const threadPaths = THREADS.map(th => {
     const pts = th.nodes.map(id => {
@@ -370,15 +475,15 @@ export default function App() {
   const ph = selNode ? PHASES[selNode.ph] : null;
   const myT = selNode ? THREADS.filter(th => th.nodes.includes(selNode.id)) : [];
 
-  const pill = (label, active, col, onClick) => (
-    <button onClick={onClick} style={{ fontSize: 13, padding: "4px 10px", borderRadius: 8, cursor: "pointer", fontFamily: "inherit",
+  const pill = (label, active, col, onClick, tipText) => (
+    <button onClick={onClick} {...tp(tipText)} style={{ fontSize: 13, padding: "4px 10px", borderRadius: 8, cursor: "pointer", fontFamily: "inherit",
       border: `1px solid ${active ? col : C.border}`, background: active ? col + "20" : "#f5f5f2", color: active ? col : C.t2 }}>
       {label}
     </button>
   );
 
-  const tabBtn = (id, label) => (
-    <button onClick={() => setTab(id)} style={{ fontSize: 14, padding: "5px 12px", background: "transparent", border: "none",
+  const tabBtn = (id, label, tipText) => (
+    <button onClick={() => setTab(id)} {...tp(tipText)} style={{ fontSize: 14, padding: "5px 12px", background: "transparent", border: "none",
       borderBottom: tab === id ? `2px solid ${C.t1}` : "2px solid transparent",
       color: tab === id ? C.t1 : C.t3, cursor: "pointer", fontFamily: "inherit" }}>
       {label}
@@ -386,17 +491,22 @@ export default function App() {
   );
 
   return (
+    <>
     <div style={{ display: "flex", height: "100vh", background: C.bg, color: C.t1, fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif", overflow: "hidden", userSelect: resizing ? "none" : "auto", cursor: resizing ? "col-resize" : "default" }}>
 
       {/* LEFT LANE — vertical workflow-step navigator (Ross Spiral sidebar) */}
       <div style={{ width: leftW, flexShrink: 0, background: C.panel, overflowY: "auto", display: "flex", flexDirection: "column" }}>
-        <div style={{ padding: "10px 8px 6px", fontSize: 13, fontWeight: 700, color: C.t3, letterSpacing: "0.08em" }}>WORKFLOW STEPS</div>
+        <div style={{ padding: "10px 8px 6px", fontSize: 13, fontWeight: 700, color: C.t3, letterSpacing: "0.08em" }}
+          {...tp("Browse workflow steps by phase. Click a phase to expand; click a step to open it in the detail pane.")}>
+          WORKFLOW STEPS
+        </div>
         {PHASES.map((ph, i) => {
           const phNodes = NODES.filter(n => n.ph === i);
           const isOpen = laneOpen[i];
           return (
             <div key={i} style={{ borderBottom: `1px solid ${C.border}` }}>
               <div onClick={() => setLaneOpen(o => ({ ...o, [i]: !o[i] }))}
+                {...tp(`${ph.tip} Click to ${isOpen ? "collapse" : "expand"} this phase.`)}
                 style={{ display: "flex", alignItems: "center", gap: 5, padding: "7px 8px 4px", cursor: "pointer", userSelect: "none", background: isOpen ? ph.hex + "12" : "transparent" }}>
                 <div style={{ width: 7, height: 7, borderRadius: "50%", background: ph.hex, flexShrink: 0 }} />
                 <span style={{ fontSize: 13, fontWeight: 700, color: ph.hex, flex: 1 }}>{ph.label}</span>
@@ -409,13 +519,14 @@ export default function App() {
                 const dim = isDim(nd);
                 return (
                   <div key={nd.id} onClick={() => { setSelNode(nd); setTab("detail"); }}
+                    {...tp(`${nd.label} — ${nd.sub}${nd.gate ? `. Gate: ${nd.gate}` : ""}${nd.loop ? `. Loop: ${nd.loop}` : ""}`)}
                     style={{ display: "flex", alignItems: "center", gap: 5, padding: "3px 8px 3px 18px", cursor: "pointer", opacity: dim ? 0.2 : 1,
                       background: isSel ? DCOL[nd.dom] + "18" : "transparent",
                       borderLeft: isSel ? `2px solid ${DCOL[nd.dom]}` : "2px solid transparent" }}>
-                    <div style={{ width: 5, height: 5, borderRadius: "50%", background: DCOL[nd.dom], flexShrink: 0 }} />
+                    <div style={{ width: 5, height: 5, borderRadius: "50%", background: DCOL[nd.dom], flexShrink: 0 }} {...tp(DOM_TIP[nd.dom])} />
                     <span style={{ fontSize: 13, color: isSel ? C.t1 : C.t2, flex: 1, lineHeight: 1.3 }}>{nd.label}</span>
-                    {nd.loop && <div style={{ width: 4, height: 4, borderRadius: "50%", background: "#D85A30", flexShrink: 0 }} />}
-                    {(nd.up.length > 0 || nd.re.length > 0) && <div style={{ width: 4, height: 4, borderRadius: "50%", background: "#378ADD", flexShrink: 0 }} />}
+                    {nd.loop && <div style={{ width: 4, height: 4, borderRadius: "50%", background: "#D85A30", flexShrink: 0 }} {...tp("This step can loop back if the gate fails.")} />}
+                    {(nd.up.length > 0 || nd.re.length > 0) && <div style={{ width: 4, height: 4, borderRadius: "50%", background: "#378ADD", flexShrink: 0 }} {...tp("Linked UniProt or Reactome records are available in the Databases tab.")} />}
                   </div>
                 );
               })}
@@ -426,13 +537,14 @@ export default function App() {
       <div
         className={`resize-handle${resizing === "left" ? " dragging" : ""}`}
         onPointerDown={startResize("left", leftW)}
-        title="Drag to resize"
+        {...tp("Drag to widen or narrow the workflow list.")}
       />
 
       {/* CENTER — 3D orbit spiral (pure SVG, no Three.js dependency) */}
       <div ref={svgRef} style={{ flex: 1, position: "relative", overflow: "hidden", cursor: drag.current.down ? "grabbing" : "grab", userSelect: "none" }}
         onPointerDown={onPDWrapped} onPointerMove={onPMWrapped} onPointerUp={onPU} onPointerLeave={onPU}
-        onContextMenu={e => e.preventDefault()}>
+        onContextMenu={e => e.preventDefault()}
+        {...tp("Drag to orbit the spiral. Scroll to zoom. Shift-drag to pan. Click a node for details.")}>
 
         <svg width="100%" height="100%" viewBox="0 0 580 420" style={{ display: "block", background: C.bg }}
           onClick={handleBgClick}>
@@ -442,13 +554,17 @@ export default function App() {
             const dim = activePhase !== null && activePhase !== i;
             const d = pts.map((p, j) => j === 0 ? `M${p.sx.toFixed(1)},${p.sy.toFixed(1)}` : `L${p.sx.toFixed(1)},${p.sy.toFixed(1)}`).join(" ");
             return <path key={i} d={d} fill="none" stroke={ph.hex} strokeWidth={1.8} strokeOpacity={dim ? 0.05 : 0.22}
-              strokeDasharray={i === 0 ? "5 4" : i === 4 ? "2 3" : "none"} />;
+              strokeDasharray={i === 0 ? "5 4" : i === 4 ? "2 3" : "none"}>
+              <title>{ph.label} — {ph.desc}. Coil width reflects remaining candidates.</title>
+            </path>;
           })}
 
           {/* Thread dashed lines */}
           {threadPaths.map(({ th, segs, isActive }) => (
             <path key={th.id} d={segs.join(" ")} fill="none" stroke={th.hex}
-              strokeWidth={isActive ? 2 : 1} strokeOpacity={isActive ? 0.9 : activeThread ? 0.07 : 0.22} />
+              strokeWidth={isActive ? 2 : 1} strokeOpacity={isActive ? 0.9 : activeThread ? 0.07 : 0.22}>
+              <title>{th.label} thread — {th.tip}</title>
+            </path>
           ))}
 
           {/* Loop-back arcs */}
@@ -457,6 +573,7 @@ export default function App() {
             const { sx: x, sy: y } = project({ x: p3.x * zoom, y: p3.y * zoom, z: p3.z * zoom }, theta, phi, FOV, CX + panXY.x, CY + panXY.y);
             return (
               <g key={nd.id + "_lp"}>
+                <title>Loop-back: {nd.loop}</title>
                 <path d={`M${x},${y} C${x - 18},${y - 22} ${x - 28},${y + 6} ${x - 2},${y + 14}`}
                   fill="none" stroke="#D85A30" strokeWidth={0.9} strokeDasharray="3 3" strokeOpacity={0.6} />
                 <circle cx={x - 2} cy={y + 14} r={1.8} fill="#D85A30" fillOpacity={0.6} />
@@ -472,7 +589,9 @@ export default function App() {
             const r = isSel ? 7 : Math.max(3.5, 5.5 - depth * 0.003);
             const hasDb = nd.up.length > 0 || nd.re.length > 0;
             return (
-              <g key={nd.id} onClick={e => handleNodeClick(nd, e)} style={{ cursor: "pointer" }}>
+              <g key={nd.id} onClick={e => handleNodeClick(nd, e)} style={{ cursor: "pointer" }}
+                {...tp(`${nd.label} — ${nd.sub}. ${PHASES[nd.ph].label}. Click to open details.`)}>
+                <title>{nd.label} — {nd.sub}</title>
                 <circle cx={sx} cy={sy} r={16} fill="transparent" stroke="none" />
                 {isSel && <circle cx={sx} cy={sy} r={r + 5} fill="none" stroke={col} strokeWidth={1.2} strokeOpacity={0.3} />}
                 <circle cx={sx} cy={sy} r={r} fill={isSel ? col : C.panel} stroke={col} strokeWidth={1.4} opacity={dim ? 0.08 : 1} />
@@ -494,13 +613,13 @@ export default function App() {
 
         {/* Zoom / rotate controls */}
         <div style={{ position: "absolute", bottom: 12, left: 10, display: "flex", flexDirection: "column", gap: 4 }}>
-          {[["＋", () => setZoom(z => Math.min(4, z * 1.25))],
-            ["⟲", () => { setZoom(1); setTheta(0.3); setPhi(0.4); setPanXY({ x: 0, y: 0 }); }],
-            ["－", () => setZoom(z => Math.max(0.3, z / 1.25))]
-          ].map(([l, fn]) => (
-            <button key={l} onClick={fn} style={{ width: 32, height: 32, border: `1px solid ${C.border}`, borderRadius: 6, background: C.panel, color: C.t2, cursor: "pointer", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>{l}</button>
+          {[["＋", () => setZoom(z => Math.min(4, z * 1.25)), "Zoom in on the spiral"],
+            ["⟲", () => { setZoom(1); setTheta(0.3); setPhi(0.4); setPanXY({ x: 0, y: 0 }); }, "Reset orbit, zoom, and pan to the default view"],
+            ["－", () => setZoom(z => Math.max(0.3, z / 1.25)), "Zoom out"]
+          ].map(([l, fn, tipText]) => (
+            <button key={l} onClick={fn} {...tp(tipText)} style={{ width: 32, height: 32, border: `1px solid ${C.border}`, borderRadius: 6, background: C.panel, color: C.t2, cursor: "pointer", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>{l}</button>
           ))}
-          <div style={{ fontSize: 13, color: C.t3, textAlign: "center" }}>{Math.round(zoom * 100)}%</div>
+          <div style={{ fontSize: 13, color: C.t3, textAlign: "center" }} {...tp("Current zoom level")}>{Math.round(zoom * 100)}%</div>
         </div>
 
         <div style={{ position: "absolute", top: 8, left: 8, fontSize: 13, color: C.t3, lineHeight: 1.8, pointerEvents: "none" }}>
@@ -508,16 +627,19 @@ export default function App() {
         </div>
 
         {/* Phase / attrition legend */}
-        <div className="legend-card" style={{ position: "absolute", top: 8, right: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+        <div className="legend-card" style={{ position: "absolute", top: 8, right: 8, display: "flex", flexDirection: "column", gap: 6 }}
+          {...tp("Phase legend. Coil width equals remaining candidate count. Click a phase to isolate it.")}>
           {PHASES.map((ph, i) => (
             <div key={i} onClick={() => setActivePhase(activePhase === i ? null : i)}
+              {...tp(`${ph.tip} Radius ${SP_RADII[i]}. Click to isolate this coil.`)}
               style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer", opacity: activePhase !== null && activePhase !== i ? 0.3 : 1 }}>
               <div style={{ width: 28, height: 3, background: ph.hex, borderRadius: 1, opacity: 0.7 }} />
               <span style={{ color: ph.hex, fontWeight: 600 }}>{ph.label}</span>
               <span style={{ color: C.t3 }}>r={(SP_RADII[i])} ← {i === 0 ? "widest" : i === 4 ? "narrowest" : ""}</span>
             </div>
           ))}
-          <div style={{ marginTop: 2, fontSize: 13, color: C.t3, borderTop: `1px solid ${C.border}`, paddingTop: 6 }}>
+          <div style={{ marginTop: 2, fontSize: 13, color: C.t3, borderTop: `1px solid ${C.border}`, paddingTop: 6 }}
+            {...tp("The spiral is an attrition funnel: outer coils hold more molecules, inner coils hold fewer survivors.")}>
             Width = candidate count (attrition)
           </div>
         </div>
@@ -525,7 +647,7 @@ export default function App() {
       <div
         className={`resize-handle${resizing === "right" ? " dragging" : ""}`}
         onPointerDown={startResize("right", rightW)}
-        title="Drag to resize"
+        {...tp("Drag to widen or narrow the detail pane.")}
       />
 
       {/* RIGHT PANEL */}
@@ -536,8 +658,10 @@ export default function App() {
           <div style={{ display: "flex", gap: 5 }}>
             <input value={sq} onChange={e => setSq(e.target.value)} onKeyDown={e => e.key === "Enter" && doSearch()}
               placeholder="Search UniProt, Reactome…"
+              {...tp("Search live UniProt proteins and Reactome pathways. Press Enter or Go.")}
               style={{ flex: 1, fontSize: 15, padding: "7px 10px", borderRadius: 6, border: `1px solid ${C.border}`, background: "#f9f9f7", color: C.t1, outline: "none" }} />
-            <button onClick={doSearch} style={{ fontSize: 14, padding: "0 12px", borderRadius: 6, border: `1px solid ${C.border}`, background: "#f2f2ee", color: C.t2, cursor: "pointer", fontFamily: "inherit" }}>
+            <button onClick={doSearch} {...tp("Run the UniProt and Reactome search")}
+              style={{ fontSize: 14, padding: "0 12px", borderRadius: 6, border: `1px solid ${C.border}`, background: "#f2f2ee", color: C.t2, cursor: "pointer", fontFamily: "inherit" }}>
               {searching ? "…" : "Go"}
             </button>
           </div>
@@ -545,6 +669,7 @@ export default function App() {
             <div style={{ marginTop: 6, maxHeight: 120, overflowY: "auto", display: "flex", flexDirection: "column", gap: 3 }}>
               {srRes.map((r, i) => (
                 <a key={i} href={r.url} target="_blank" rel="noreferrer"
+                  {...tp(`Open this ${r.src} record in a new tab`)}
                   style={{ display: "block", padding: "5px 7px", borderRadius: 5, background: "#f7f7f4", border: `1px solid ${C.border}`, textDecoration: "none" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 2 }}>
                     <span style={{ fontSize: 12, padding: "2px 6px", borderRadius: 5, background: r.col, color: "#fff", fontWeight: 700 }}>{r.src}</span>
@@ -557,43 +682,34 @@ export default function App() {
           )}
         </div>
 
-        {/* Filters: Phases, Threads, Registration Access */}
+        {/* Filters: Phases, Threads */}
         <div style={{ padding: "7px 12px", borderBottom: `1px solid ${C.border}` }}>
-          <div style={{ fontSize: 12, color: C.t3, marginBottom: 5, fontWeight: 700, letterSpacing: "0.07em" }}>PHASES</div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 3, marginBottom: 7 }}>
-            {PHASES.map((p, i) => pill(p.label, activePhase === i, p.hex, () => setActivePhase(activePhase === i ? null : i)))}
+          <div style={{ fontSize: 12, color: C.t3, marginBottom: 5, fontWeight: 700, letterSpacing: "0.07em" }}
+            {...tp("Filter the spiral and workflow list to a single discovery phase. Click again to clear.")}>
+            PHASES
           </div>
-          <div style={{ fontSize: 12, color: C.t3, marginBottom: 5, fontWeight: 700, letterSpacing: "0.07em" }}>THREADS</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 3, marginBottom: 7 }}>
-            {THREADS.map(th => pill(th.label, activeThread === th.id, th.hex, () => setActiveThread(activeThread === th.id ? null : th.id)))}
+            {PHASES.map((p, i) => pill(p.label, activePhase === i, p.hex, () => setActivePhase(activePhase === i ? null : i), `${p.tip} Click to isolate; click again to show all phases.`))}
           </div>
-          <div style={{ fontSize: 12, color: C.t3, marginBottom: 5, fontWeight: 700, letterSpacing: "0.07em" }}>REGISTRATION ACCESS</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-            {[
-              { label: "Luma sequence registry", url: "https://dotmatics.com/products/luma", col: "#7F77DD" },
-              { label: "UniProt entry", url: "https://www.uniprot.org/uniprot/P02786", col: "#1D9E75" },
-              { label: "GenBank nucleotide", url: "https://www.ncbi.nlm.nih.gov/nuccore/", col: "#378ADD" },
-              { label: "Reactome browser", url: "https://reactome.org/PathwayBrowser/", col: "#BA7517" },
-              { label: "IMGT/V-QUEST", url: "https://www.imgt.org/IMGT_vquest/", col: "#993556" },
-              { label: "PDB structure search", url: "https://www.rcsb.org/", col: "#5B8DB8" },
-            ].map((r, i) => (
-              <a key={i} href={r.url} target="_blank" rel="noreferrer"
-                style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 7px", borderRadius: 5,
-                  background: r.col + "10", border: `1px solid ${r.col}40`, textDecoration: "none" }}>
-                <div style={{ width: 6, height: 6, borderRadius: "50%", background: r.col, flexShrink: 0 }} />
-                <span style={{ fontSize: 13, color: r.col, fontWeight: 500 }}>{r.label} ↗</span>
-              </a>
-            ))}
+          <div style={{ fontSize: 12, color: C.t3, marginBottom: 5, fontWeight: 700, letterSpacing: "0.07em" }}
+            {...tp("Filter to a cross-cutting scientific thread. Nodes on that thread stay bright; others dim.")}>
+            THREADS
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
+            {THREADS.map(th => pill(th.label, activeThread === th.id, th.hex, () => setActiveThread(activeThread === th.id ? null : th.id), `${th.tip} Click to isolate; click again to clear.`))}
           </div>
         </div>
 
+        <div style={{ flex: 1, overflowY: "auto" }}>
         {/* Node detail */}
-        <div style={{ flex: 1, overflowY: "auto", padding: 12 }}>
+        <div style={{ padding: 12 }}>
           {!selNode ? (
-            <div style={{ fontSize: 15, color: C.t2, lineHeight: 1.85, marginTop: 8 }}>
+            <div style={{ fontSize: 15, color: C.t2, lineHeight: 1.85, marginTop: 8 }}
+              {...tp("Click a node on the spiral or in the workflow list to load its assays, databases, and tools here.")}>
               <div style={{ fontSize: 18, fontWeight: 500, color: C.t1, marginBottom: 8 }}>3D Attrition Spiral</div>
               <strong style={{ fontWeight: 500 }}>Part 1 is outermost</strong> (widest radius = most candidates). Each inner coil represents attrition — fewer molecules survive each phase.<br /><br />
-              <div style={{ background: "#5B8DB818", border: "1px solid #5B8DB860", borderRadius: 6, padding: "7px 9px", marginBottom: 8 }}>
+              <div style={{ background: "#5B8DB818", border: "1px solid #5B8DB860", borderRadius: 6, padding: "7px 9px", marginBottom: 8 }}
+                {...tp("Blue square markers are XL/PTM nodes. They run beside the main workflow at descriptive and atomic resolution.")}>
                 <strong style={{ fontWeight: 500, color: "#5B8DB8" }}>Cross-linking nodes</strong> (square markers, blue) run alongside the main workflow. They cover XL-MS methodology, epitope mapping, PTM characterization, disulfide mapping, glycan profiling, and ADC conjugation site analysis at both descriptive and atomic levels.
               </div>
               Drag to orbit · Scroll to zoom · Shift-drag to pan<br />
@@ -602,29 +718,35 @@ export default function App() {
           ) : (
             <>
               <div style={{ marginBottom: 10 }}>
-                <div style={{ fontSize: 18, fontWeight: 500, color: C.t1 }}>{selNode.label}</div>
-                <div style={{ fontSize: 14, color: C.t2, marginBottom: 5 }}>{selNode.sub}</div>
-                <span style={{ fontSize: 13, padding: "3px 10px", borderRadius: 8, background: ph.hex + "18", color: ph.hex }}>
+                <div style={{ fontSize: 18, fontWeight: 500, color: C.t1 }} {...tp(selNode.detail)}>{selNode.label}</div>
+                <div style={{ fontSize: 14, color: C.t2, marginBottom: 5 }} {...tp("Short readout for this step")}>{selNode.sub}</div>
+                <span style={{ fontSize: 13, padding: "3px 10px", borderRadius: 8, background: ph.hex + "18", color: ph.hex }} {...tp(ph.tip)}>
                   {ph.label} · {ph.desc}
                 </span>
                 {selNode.dom === "xlink" && (
-                  <span style={{ fontSize: 13, padding: "3px 10px", borderRadius: 8, background: "#5B8DB820", color: "#5B8DB8", marginLeft: 5 }}>
+                  <span style={{ fontSize: 13, padding: "3px 10px", borderRadius: 8, background: "#5B8DB820", color: "#5B8DB8", marginLeft: 5 }}
+                    {...tp("This node belongs to the cross-linking / PTM lane (square markers).")}>
                     Cross-linking / PTM
                   </span>
                 )}
               </div>
               <div style={{ display: "flex", borderBottom: `1px solid ${C.border}`, marginBottom: 10 }}>
-                {tabBtn("detail", "Detail")}{tabBtn("assay", "Assay")}{tabBtn("databases", "Databases")}{tabBtn("tools", "Tools")}
+                {tabBtn("detail", "Detail", "Narrative for this workflow step")}
+                {tabBtn("assay", "Assay", "Primary assay, advancement gate, and any loop-back")}
+                {tabBtn("databases", "Databases", "Live UniProt and Reactome records linked to this step")}
+                {tabBtn("tools", "Tools", "Software tools and scientific threads this step belongs to")}
               </div>
 
               {tab === "detail" && <div style={{ fontSize: 15, lineHeight: 1.75, color: C.t1 }}>{selNode.detail}</div>}
 
               {tab === "assay" && (
                 <div style={{ fontSize: 15 }}>
-                  <div style={{ color: C.t3, marginBottom: 3 }}>Primary assay</div>
+                  <div style={{ color: C.t3, marginBottom: 3 }} {...tp("The experimental method used at this step")}>Primary assay</div>
                   <div style={{ fontWeight: 500, color: C.t1, marginBottom: 10 }}>{selNode.assay}</div>
-                  {selNode.gate && <div style={{ background: "#fff2ee", border: "1px solid #f5c5b0", borderRadius: 5, padding: "5px 8px", color: "#b84a20" }}>Gate: {selNode.gate}</div>}
-                  {selNode.loop && <div style={{ marginTop: 6, background: "#fffbee", border: "1px solid #f0dd99", borderRadius: 5, padding: "5px 8px", color: "#8a6a00" }}>↻ {selNode.loop}</div>}
+                  {selNode.gate && <div style={{ background: "#fff2ee", border: "1px solid #f5c5b0", borderRadius: 5, padding: "5px 8px", color: "#b84a20" }}
+                    {...tp("Advancement criterion. Compare with capability thresholds below for the selected stage.")}>Gate: {selNode.gate}</div>}
+                  {selNode.loop && <div style={{ marginTop: 6, background: "#fffbee", border: "1px solid #f0dd99", borderRadius: 5, padding: "5px 8px", color: "#8a6a00" }}
+                    {...tp("If the gate fails, work loops back here instead of advancing.")}>↻ {selNode.loop}</div>}
                 </div>
               )}
 
@@ -633,17 +755,20 @@ export default function App() {
                   {dbLoad && <div style={{ fontSize: 15, color: C.t2 }}>Fetching records…</div>}
                   {!dbLoad && !selNode.up.length && !selNode.re.length && <div style={{ fontSize: 15, color: C.t2 }}>No database IDs linked to this step.</div>}
                   {dbRecs.map((rec, i) => (
-                    <div key={i} style={{ marginBottom: 8, padding: "7px 9px", borderRadius: 6, border: `1px solid ${C.border}`, background: "#f9f9f7" }}>
+                    <div key={i} style={{ marginBottom: 8, padding: "7px 9px", borderRadius: 6, border: `1px solid ${C.border}`, background: "#f9f9f7" }}
+                      {...tp(rec.type === "uniprot" ? "UniProt protein record fetched live from rest.uniprot.org" : "Reactome pathway record fetched live from reactome.org")}>
                       <div style={{ marginBottom: 3 }}>
                         <span style={{ fontSize: 12, padding: "2px 6px", borderRadius: 6, background: rec.type === "uniprot" ? "#1D9E75" : "#7F77DD", color: "#fff", fontWeight: 700, marginRight: 5 }}>
                           {rec.type === "uniprot" ? "UniProt" : "Reactome"}
                         </span>
-                        <a href={rec.url} target="_blank" rel="noreferrer" style={{ fontSize: 14, color: "#1a6bc4", textDecoration: "none", fontWeight: 500 }}>{rec.name}</a>
+                        <a href={rec.url} target="_blank" rel="noreferrer" style={{ fontSize: 14, color: "#1a6bc4", textDecoration: "none", fontWeight: 500 }}
+                          {...tp("Open the source record in a new tab")}>{rec.name}</a>
                       </div>
                       {rec.org && <div style={{ fontSize: 13, color: C.t2 }}>{rec.org}{rec.gene ? " · " + rec.gene : ""}</div>}
                       {rec.fn && <div style={{ fontSize: 13, color: C.t2, marginTop: 3, lineHeight: 1.5 }}>{rec.fn}</div>}
                       {rec.summ && <div style={{ fontSize: 13, color: C.t2, marginTop: 3, lineHeight: 1.5 }}>{rec.summ}</div>}
-                      {rec.pbUrl && <a href={rec.pbUrl} target="_blank" rel="noreferrer" style={{ fontSize: 13, color: "#1a6bc4", marginTop: 4, display: "block" }}>Open Pathway Browser →</a>}
+                      {rec.pbUrl && <a href={rec.pbUrl} target="_blank" rel="noreferrer" style={{ fontSize: 13, color: "#1a6bc4", marginTop: 4, display: "block" }}
+                        {...tp("Open this pathway in the Reactome Pathway Browser")}>Open Pathway Browser →</a>}
                     </div>
                   ))}
                 </div>
@@ -651,18 +776,22 @@ export default function App() {
 
               {tab === "tools" && (
                 <div>
-                  <div style={{ fontSize: 12, color: C.t3, marginBottom: 5, fontWeight: 700, letterSpacing: "0.07em" }}>CONNECTED TOOLS</div>
+                  <div style={{ fontSize: 12, color: C.t3, marginBottom: 5, fontWeight: 700, letterSpacing: "0.07em" }}
+                    {...tp("Software used at this step")}>CONNECTED TOOLS</div>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 12 }}>
                     {selNode.tools.map(t => (
-                      <span key={t} style={{ fontSize: 14, padding: "4px 10px", borderRadius: 6, background: "#f2f2ee", border: `1px solid ${C.border}`, color: C.t1 }}>{t}</span>
+                      <span key={t} style={{ fontSize: 14, padding: "4px 10px", borderRadius: 6, background: "#f2f2ee", border: `1px solid ${C.border}`, color: C.t1 }}
+                        {...tp(`${t} is linked to this workflow step`)}>{t}</span>
                     ))}
                   </div>
                   {myT.length > 0 && (
                     <>
-                      <div style={{ fontSize: 12, color: C.t3, marginBottom: 5, fontWeight: 700, letterSpacing: "0.07em" }}>BELONGS TO THREADS</div>
+                      <div style={{ fontSize: 12, color: C.t3, marginBottom: 5, fontWeight: 700, letterSpacing: "0.07em" }}
+                        {...tp("Scientific threads that include this node. Click to isolate a thread on the spiral.")}>BELONGS TO THREADS</div>
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
                         {myT.map(th => (
                           <button key={th.id} onClick={() => setActiveThread(activeThread === th.id ? null : th.id)}
+                            {...tp(th.tip)}
                             style={{ fontSize: 13, padding: "3px 10px", borderRadius: 8, cursor: "pointer", fontFamily: "inherit",
                               border: `1px solid ${th.hex}`, background: activeThread === th.id ? th.hex + "18" : "transparent", color: th.hex }}>
                             {th.label}
@@ -676,7 +805,130 @@ export default function App() {
             </>
           )}
         </div>
+
+        {/* Uniqueness & PTM sites */}
+        <div className="side-block" style={{ background: selNode?.id === "x5" ? "#5B8DB810" : "transparent" }}>
+          <div className="side-block-title" onClick={jumpToUniqueness} style={{ cursor: "pointer" }}
+            {...tp("Same uniqueness-layer model as the R&D dashboard. Click to open the Uniqueness & PTM sites node.")}>
+            UNIQUENESS & PTM SITES
+          </div>
+          <div style={{ fontSize: 13, color: C.t2, marginBottom: 8, lineHeight: 1.45 }}
+            {...tp("Configure which crosslink layers contribute to uniqueness at registration. Disulfides are off by default for IgGs.")}>
+            Layers that contribute to the registration uniqueness key. Default excludes disulfides.
+          </div>
+          <div style={{ border: `1px solid ${C.border}`, borderRadius: 8, overflow: "hidden", marginBottom: 10 }}>
+            {XL_LAYERS.map(layer => (
+              <div className="layer-row" key={layer.num} style={layer.always ? { background: "#f5f5f3" } : undefined} {...tp(layer.tip)}>
+                <div className="layer-num" style={{ background: layer.color, color: layer.textColor || "#fff" }}>{layer.num}</div>
+                <div className="layer-name">{layer.name}</div>
+                <div className="layer-desc">{layer.desc}</div>
+                <div className="tog-wrap">
+                  {layer.always ? (
+                    <><div className="tog on" /><span>Always on</span></>
+                  ) : (
+                    <>
+                      <div className={`tog${layers[layer.num] ? " on" : ""}`} onClick={() => toggleLayer(layer.num)}
+                        {...tp(layers[layer.num] ? "Click to exclude this layer from uniqueness" : "Click to include this layer in uniqueness")} />
+                      <span>{layers[layer.num] ? "On" : "Off"}</span>
+                    </>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: C.t3, marginBottom: 4, letterSpacing: "0.06em" }}
+            {...tp("Live uniqueness key for iso_326. Faded segments are layers currently switched off.")}>
+            LIVE UNIQUENESS KEY
+          </div>
+          <div className="key-preview" {...tp("Descriptive and atomic registrations resolve to the same key when the enabled layers match.")}>
+            <span className="kl kl1">VH_16_4$VL_16_4</span> ·{" "}
+            <span className="kl kl2" style={{ opacity: layers[2] ? 1 : 0.3 }}>— (disulfide off)</span> ·{" "}
+            <span className="kl kl3" style={{ opacity: layers[3] ? 1 : 0.3 }}>23:R3-45:R3</span> ·{" "}
+            <span className="kl kl4" style={{ opacity: layers[4] ? 1 : 0.3 }}>GlcNAc:R1-317:R3</span> ·{" "}
+            <span className="kl kl5" style={{ opacity: layers[5] ? 1 : 0.3 }}>Linker:R1-Lys:[unspec]</span>
+          </div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: C.t3, margin: "12px 0 4px", letterSpacing: "0.06em" }}
+            {...tp("Site-level PTMs that feed uniqueness layer 4 and conjugation layer 5.")}>
+            PTM / CONJUGATION SITES
+          </div>
+          <table className="ptm-table">
+            <thead>
+              <tr>
+                <th {...tp("Modification chemistry")}>Mod</th>
+                <th {...tp("Residue or motif")}>Site</th>
+                <th {...tp("Uniqueness layer this PTM belongs to")}>Layer</th>
+                <th {...tp("Confirmed by XL-MS / peptide mapping, predicted, or still unknown")}>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {PTM_SITES.map(row => (
+                <tr key={row.mod} {...tp(row.tip)}>
+                  <td style={{ fontWeight: 600 }}>{row.mod}</td>
+                  <td>{row.site}</td>
+                  <td>{row.layer}</td>
+                  <td style={{ color: row.status === "Confirmed" ? "#1B5E20" : row.status === "Unknown site" ? "#7F0000" : "#6D5300", fontWeight: 600 }}>{row.status}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Capability thresholds */}
+        <div className="side-block">
+          <div className="side-block-title" {...tp("Green / yellow / red cutoffs used to score assays. Same bands as the R&D dashboard Threshold config.")}>
+            CAPABILITY THRESHOLDS
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
+            <select className="stage-select" value={stage} onChange={e => applyStage(e.target.value)}
+              {...tp("Load stage-specific defaults. Early screening is looser; candidate nomination is tightest.")}>
+              <option value="screening">Early screening</option>
+              <option value="lead">Lead selection</option>
+              <option value="candidate">Candidate nomination</option>
+            </select>
+            <button type="button" onClick={() => applyStage(stage)}
+              {...tp("Reset the numeric cutoffs to the defaults for this stage")}
+              style={{ fontSize: 13, padding: "4px 10px", borderRadius: 6, border: `1px solid ${C.border}`, background: "#f2f2ee", color: C.t2, cursor: "pointer", fontFamily: "inherit" }}>
+              Reset defaults
+            </button>
+          </div>
+          <div className="section-hdr" {...tp("Binding and functional potency vs hTfR1")}>Binding & potency (hTfR1)</div>
+          {THRESH_METRICS.slice(0, 4).map(m => (
+            <BandRow key={m.key} metric={m} thresh={thresh} setThresh={setThresh} tp={tp} />
+          ))}
+          <div className="section-hdr" {...tp("Colloidal stability and purity from SEC")}>SEC / colloidal stability</div>
+          {THRESH_METRICS.slice(4, 6).map(m => (
+            <BandRow key={m.key} metric={m} thresh={thresh} setThresh={setThresh} tp={tp} />
+          ))}
+          <div className="section-hdr" {...tp("Expression titer required to advance")}>Production</div>
+          {THRESH_METRICS.slice(6).map(m => (
+            <BandRow key={m.key} metric={m} thresh={thresh} setThresh={setThresh} tp={tp} />
+          ))}
+        </div>
+
+        {/* Registration access — below uniqueness & PTM */}
+        <div className="side-block">
+          <div className="side-block-title" {...tp("External registries and databases used when registering sequences and structures.")}>
+            REGISTRATION ACCESS
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+            {REG_LINKS.map((r, i) => (
+              <a key={i} href={r.url} target="_blank" rel="noreferrer" {...tp(r.tip)}
+                style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 7px", borderRadius: 5,
+                  background: r.col + "10", border: `1px solid ${r.col}40`, textDecoration: "none" }}>
+                <div style={{ width: 6, height: 6, borderRadius: "50%", background: r.col, flexShrink: 0 }} />
+                <span style={{ fontSize: 13, color: r.col, fontWeight: 500 }}>{r.label} ↗</span>
+              </a>
+            ))}
+          </div>
+        </div>
+        </div>
       </div>
     </div>
+    {tip && (
+      <div className="float-tip" style={{ left: Math.min(tip.x, (typeof window !== "undefined" ? window.innerWidth : 1200) - 300), top: Math.min(tip.y, (typeof window !== "undefined" ? window.innerHeight : 800) - 90) }}>
+        {tip.text}
+      </div>
+    )}
+    </>
   );
 }
